@@ -11,19 +11,309 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 解压并整理源码
+      - name: 在云端生成完整项目源码
         run: |
-          if [ -f "ModuleSrc.zip" ]; then
-            echo "📦 解压 ModuleSrc.zip..."
-            unzip -o ModuleSrc.zip -d temp
-            shopt -s dotglob
-            mv temp/* . 2>/dev/null || true
-            rm -rf temp
-          fi
-          echo "📂 当前目录内容："
-          ls -la
-          echo "📂 app 目录："
-          ls -la app/ || echo "❌ app 目录不存在"
+          mkdir -p app/src/main/java/com/example/mcmod
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/assets
+
+          # 1. AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.mcmod">
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="BrutalMod"
+                  android:theme="@android:style/Theme.NoTitleBar">
+                  <service android:name=".FloatingService" android:exported="false" />
+              </application>
+          </manifest>
+          EOF
+
+          # 2. app/build.gradle
+          cat > app/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.example.mcmod'
+              compileSdk 30
+              defaultConfig {
+                  applicationId "com.example.mcmod"
+                  minSdk 21
+                  targetSdk 30
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+          }
+          repositories {
+              mavenCentral()
+              maven { url 'https://api.xposed.info/' }
+          }
+          dependencies {
+              compileOnly 'de.robv.android.xposed:api:82'
+          }
+          EOF
+
+          # 3. 项目级 build.gradle
+          cat > build.gradle << 'EOF'
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:7.4.2' }
+          }
+          allprojects {
+              repositories { google(); mavenCentral() }
+          }
+          EOF
+
+          # 4. settings.gradle
+          echo 'include ":app"' > settings.gradle
+
+          # 5. 资源文件
+          cat > app/src/main/res/values/themes.xml << 'EOF'
+          <resources>
+              <style name="Theme.NoTitleBar" parent="@android:style/Theme.NoTitleBar"/>
+          </resources>
+          EOF
+          cat > app/src/main/res/values/colors.xml << 'EOF'
+          <resources>
+              <color name="colorPrimary">#FF1744</color>
+          </resources>
+          EOF
+          cat > app/src/main/res/layout/panel_layout.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:orientation="vertical"
+              android:background="#CC111122"
+              android:padding="16dp"
+              android:minWidth="180dp">
+              <TextView
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="暴力模块"
+                  android:textColor="#FF4081"
+                  android:textSize="18sp"
+                  android:gravity="center"/>
+              <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                  android:orientation="horizontal">
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:text="宽桥搭路" android:textColor="#FFFFFF"/>
+                  <Switch android:id="@+id/switch_bridge" android:layout_width="wrap_content"
+                      android:layout_height="wrap_content" android:layout_marginStart="16dp"/>
+              </LinearLayout>
+              <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                  android:orientation="horizontal">
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:text="杀戮光环" android:textColor="#FFFFFF"/>
+                  <Switch android:id="@+id/switch_kill" android:layout_width="wrap_content"
+                      android:layout_height="wrap_content" android:layout_marginStart="16dp"/>
+              </LinearLayout>
+          </LinearLayout>
+          EOF
+          cat > app/src/main/res/drawable/circle_bg.xml << 'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android"
+              android:shape="oval">
+              <solid android:color="#FF1744" />
+              <stroke android:width="3dp" android:color="#FFFFFF" />
+          </shape>
+          EOF
+          mkdir -p app/src/main/res/mipmap-hdpi
+          echo "dummy" > app/src/main/res/mipmap-hdpi/ic_launcher.png
+
+          # 6. xposed_init
+          echo 'com.example.mcmod.MainHook' > app/src/main/assets/xposed_init
+
+          # 7. Java 源码（完整暴力功能）
+          cat > app/src/main/java/com/example/mcmod/MainHook.java << 'EOF'
+          package com.example.mcmod;
+          import android.content.Context;
+          import android.content.Intent;
+          import de.robv.android.xposed.IXposedHookLoadPackage;
+          import de.robv.android.xposed.XC_MethodHook;
+          import de.robv.android.xposed.XposedHelpers;
+          import de.robv.android.xposed.callbacks.XC_LoadPackage;
+          public class MainHook implements IXposedHookLoadPackage {
+              @Override
+              public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
+                  if (!lpparam.packageName.equals("com.netease.x19")) return;
+                  XposedHelpers.findAndHookMethod("android.app.ActivityThread", lpparam.classLoader,
+                          "handleBindApplication", "android.app.ActivityThread$AppBindData",
+                          new XC_MethodHook() {
+                              @Override
+                              protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                  Context context = (Context) XposedHelpers.callMethod(param.thisObject, "getSystemContext");
+                                  if (context != null) context.startService(new Intent(context, FloatingService.class));
+                              }
+                          });
+                  try {
+                      Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft", true, lpparam.classLoader);
+                      XposedHelpers.findAndHookMethod(mcClass, "runTick", new XC_MethodHook() {
+                          @Override protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                              Object mc = param.thisObject;
+                              Object player = XposedHelpers.callMethod(mc, "getPlayer");
+                              if (player == null) return;
+                              if (AutoBridge.isEnabled()) AutoBridge.placeWideBridge(player, mc);
+                              if (AutoKill.isEnabled()) AutoKill.killAura(player, mc, 6.0);
+                          }
+                      });
+                  } catch (Throwable t) {}
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/mcmod/FloatingService.java << 'EOF'
+          package com.example.mcmod;
+          import android.app.Service;
+          import android.content.Intent;
+          import android.graphics.PixelFormat;
+          import android.os.IBinder;
+          import android.view.*;
+          import android.widget.*;
+          public class FloatingService extends Service {
+              private WindowManager wm;
+              private View floatBtn, panel;
+              private boolean open = false;
+              @Override public int onStartCommand(Intent i, int f, int id) {
+                  wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                  floatBtn = new TextView(this);
+                  floatBtn.setBackgroundResource(R.drawable.circle_bg);
+                  floatBtn.setText("K");
+                  floatBtn.setTextColor(android.graphics.Color.WHITE);
+                  floatBtn.setTextSize(30);
+                  floatBtn.setGravity(Gravity.CENTER);
+                  floatBtn.setOnClickListener(v -> togglePanel());
+                  WindowManager.LayoutParams p = new WindowManager.LayoutParams(160,160,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
+                  p.gravity = Gravity.TOP|Gravity.END;
+                  p.x=30; p.y=200;
+                  wm.addView(floatBtn, p);
+                  panel = LayoutInflater.from(this).inflate(R.layout.panel_layout, null);
+                  ((Switch)panel.findViewById(R.id.switch_bridge)).setOnCheckedChangeListener((b, c) -> AutoBridge.setEnabled(c));
+                  ((Switch)panel.findViewById(R.id.switch_kill)).setOnCheckedChangeListener((b, c) -> AutoKill.setEnabled(c));
+                  panel.setVisibility(View.GONE);
+                  WindowManager.LayoutParams p2 = new WindowManager.LayoutParams(
+                          WindowManager.LayoutParams.WRAP_CONTENT,
+                          WindowManager.LayoutParams.WRAP_CONTENT,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
+                  p2.gravity = Gravity.CENTER;
+                  wm.addView(panel, p2);
+                  return START_STICKY;
+              }
+              private void togglePanel() { open = !open; panel.setVisibility(open ? View.VISIBLE : View.GONE); }
+              @Override public void onDestroy() { if(floatBtn!=null) wm.removeView(floatBtn); if(panel!=null) wm.removeView(panel); super.onDestroy(); }
+              @Override public IBinder onBind(Intent i) { return null; }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/mcmod/AutoBridge.java << 'EOF'
+          package com.example.mcmod;
+          import de.robv.android.xposed.XposedHelpers;
+          import java.lang.reflect.Method;
+          public class AutoBridge {
+              private static boolean enabled=false;
+              public static void setEnabled(boolean e){enabled=e;}
+              public static boolean isEnabled(){return enabled;}
+              public static void placeWideBridge(Object player, Object mc) {
+                  try {
+                      Object pos = XposedHelpers.callMethod(player,"getPosition");
+                      double x=(double)XposedHelpers.callMethod(pos,"getX"),
+                             y=(double)XposedHelpers.callMethod(pos,"getY"),
+                             z=(double)XposedHelpers.callMethod(pos,"getZ");
+                      float yaw=(float)XposedHelpers.getFloatField(player,"yaw"),
+                            rad=(float)Math.toRadians(yaw);
+                      float dx=(float)-Math.sin(rad), dz=(float)Math.cos(rad);
+                      int bx=(int)Math.floor(x+dx*3), by=(int)Math.floor(y)-1, bz=(int)Math.floor(z+dz*3);
+                      float lx=-dz, lz=dx;
+                      Object world = XposedHelpers.callMethod(mc,"getWorld");
+                      if(world==null) return;
+                      Method set = findMethod(world.getClass());
+                      if(set==null) return;
+                      for(int i=-1;i<=1;i++) set.invoke(world, bx+(int)(lx*i), by, bz+(int)(lz*i), null);
+                  } catch(Throwable t){}
+              }
+              static Method findMethod(Class<?> c){
+                  for(Method m:c.getDeclaredMethods()){
+                      Class<?>[] p=m.getParameterTypes();
+                      if(p.length==4 && (p[0]==int.class||p[0]==Integer.class) &&
+                         (p[1]==int.class||p[1]==Integer.class) &&
+                         (p[2]==int.class||p[2]==Integer.class)){
+                          m.setAccessible(true);
+                          return m;
+                      }
+                  }
+                  return null;
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/mcmod/AutoKill.java << 'EOF'
+          package com.example.mcmod;
+          import de.robv.android.xposed.XposedHelpers;
+          import java.lang.reflect.Method;
+          import java.util.List;
+          public class AutoKill {
+              private static boolean enabled=false;
+              public static void setEnabled(boolean e){enabled=e;}
+              public static boolean isEnabled(){return enabled;}
+              public static void killAura(Object player, Object mc, double range) {
+                  try {
+                      Object world = XposedHelpers.callMethod(mc,"getWorld");
+                      if(world==null) return;
+                      List<?> ents=(List<?>)XposedHelpers.callMethod(world,"getEntities");
+                      if(ents==null) return;
+                      Object pos = XposedHelpers.callMethod(player,"getPosition");
+                      double px=(double)XposedHelpers.callMethod(pos,"getX"),
+                             py=(double)XposedHelpers.callMethod(pos,"getY"),
+                             pz=(double)XposedHelpers.callMethod(pos,"getZ");
+                      Method atk = findMethod(player.getClass());
+                      if(atk==null) return;
+                      for(Object e:ents){
+                          if(e==player) continue;
+                          if(!e.getClass().getName().contains("Living")) continue;
+                          Object ep = XposedHelpers.callMethod(e,"getPosition");
+                          double ex=(double)XposedHelpers.callMethod(ep,"getX"),
+                                 ey=(double)XposedHelpers.callMethod(ep,"getY"),
+                                 ez=(double)XposedHelpers.callMethod(ep,"getZ");
+                          double d=Math.sqrt((px-ex)*(px-ex)+(py-ey)*(py-ey)+(pz-ez)*(pz-ez));
+                          if(d>range) continue;
+                          float yaw=(float)Math.toDegrees(Math.atan2(ez-pz, ex-px))-90;
+                          float pitch=(float)Math.toDegrees(Math.atan2((ey+1.5)-py, Math.sqrt((ex-px)*(ex-px)+(ez-pz)*(ez-pz))));
+                          XposedHelpers.setFloatField(player,"yaw",yaw);
+                          XposedHelpers.setFloatField(player,"pitch",pitch);
+                          if((boolean)XposedHelpers.getBooleanField(player,"onGround"))
+                              XposedHelpers.setFloatField(player,"motionY",0.42f);
+                          atk.invoke(player,e);
+                      }
+                  } catch(Throwable t){}
+              }
+              static Method findMethod(Class<?> c){
+                  for(Method m:c.getDeclaredMethods()){
+                      if(m.getName().toLowerCase().contains("attack")){
+                          m.setAccessible(true);
+                          return m;
+                      }
+                  }
+                  return null;
+              }
+          }
+          EOF
+
+          echo "✅ 项目文件生成完毕"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -40,15 +330,8 @@ jobs:
           sudo apt install gradle -y
           gradle --version
 
-      - name: 编译 APK（使用系统 Gradle）
-        run: |
-          # 确保根目录有 build.gradle
-          if [ -f "build.gradle" ]; then
-            gradle assembleDebug --no-daemon
-          else
-            echo "❌ 找不到 build.gradle，请检查目录结构"
-            exit 1
-          fi
+      - name: 编译 APK
+        run: gradle assembleDebug --no-daemon
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
