@@ -11,37 +11,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 解压并整理文件结构
+      - name: 查看当前目录结构
         run: |
-跑[主要]
-#解压 zip
-unzip -o ModuleSrc.zip -d temp
-# 查看解压后的结构（调试用）
-ls -la temp/
-#如果存在嵌套的模块是你的，你是
-unzip -o ModuleSrc.zip -d temp[-d"temp/ModuleSrc"]；然后
-其他的
-cp -r temp/* .
-请将下面的文本准确无误地翻译成
-#显示最终结构：[-d[temp/ModuleSrc]
-cp -r temp/* .
+          echo "当前目录内容："
+          ls -la
+          echo "如果存在 ModuleSrc.zip，解压它"
+          if [ -f "ModuleSrc.zip" ]; then
+            unzip -o ModuleSrc.zip
+            # 查找解压后的实际目录
+            EXTRACTED_DIR=$(find . -maxdepth 2 -type d -name "ModuleSrc" | head -1)
+            if [ -n "$EXTRACTED_DIR" ]; then
+              echo "找到解压目录: $EXTRACTED_DIR"
+              cp -r $EXTRACTED_DIR/* .
+            else
+              # 尝试移动所有解压出来的内容
+              for dir in $(ls -d */ 2>/dev/null); do
+                if [ -f "$dir/build.gradle" ]; then
+                  echo "找到源码目录: $dir"
+                  cp -r $dir/* .
+                fi
+              done
+            fi
+          else
+            echo "没有找到 ModuleSrc.zip，直接使用当前目录作为源码"
+          fi
+          echo "最终目录结构："
+          ls -la
 
-      - 请将下面的文本准确无误地翻译成: 列出详细文件信息（长格式）[17]
--名称：you you JDK 17: actions/setup-java@v4
-Javata-tag版本：
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
           java-version: '17'
-分发：“temuurin”: 'temurin'
+          distribution: 'temurin'
 
-      - -名称：我喜欢Android SDK: # 显示最终结构
-用途:android-actions/setup-android@v3: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - -名称：我喜欢: 运行：|
-将 gradlew you you:chmod+x gradlew: |
-/gradlew汇编调试-
--名称：我喜欢
+      - name: 编译 APK
+        run: |
+          chmod +x gradlew 2>/dev/null || echo "gradlew 不存在"
+          if [ -f "gradlew" ]; then
+            ./gradlew assembleDebug --no-daemon
+          else
+            echo "错误：找不到 gradlew，请检查源码是否包含 gradlew 文件"
+            exit 1
+          fi
 
-      - 用途：actions/mayor-artific@v4
-名称：应用程序
-路径:app/build/outputs/apk/debug/*. apk:
-#查看解压后的结构（you you）：ls-la temp/：app-debug
-#如果存在嵌套的模块是你的，mayor:actions/mayor:app/build/outputs/apk/debug/*. apk
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
